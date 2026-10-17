@@ -1,0 +1,12 @@
+# Pastas de build e compilação
+/build/
+/.gradle/
+/out/
+
+# Configurações locais da IDE (IntelliJ IDEA)
+.idea/
+*.iml
+.DS_Store
+
+# Ficheiros de configuração temporários do ImGui gerados localmente
+imgui.ini
