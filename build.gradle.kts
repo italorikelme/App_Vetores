@@ -42,3 +42,17 @@ dependencies {
 application {
     mainClass.set("MainKt")
 }
+
+// Tarefa para juntar o código e todas as dependências num único .jar
+tasks.register<Jar>("fatJar") {
+    archiveClassifier.set("all")
+    from(sourceSets.main.get().output)
+    dependsOn(configurations.runtimeClasspath)
+    from({
+        configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
+    })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "MainKt"
+    }
+}

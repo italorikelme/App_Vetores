@@ -17,15 +17,13 @@ import java.util.Locale
 
 data class Ponto3D(var x: Float, var y: Float, var z: Float, val nome: String)
 
-fun converterParaEspacoVisual(x: Float, y: Float, z: Float, vAxis: Int, hAxis: Int): Vector3f {
-    val coords = floatArrayOf(x, y, z)
-    val outroH = (setOf(0, 1, 2) - setOf(vAxis, hAxis)).first()
-
-    val res = FloatArray(3)
-    res[0] = coords[hAxis]
-    res[1] = coords[vAxis]
-    res[2] = coords[outroH]
-    return Vector3f(res[0], res[1], res[2])
+// Reorganiza as coordenadas com base no eixo vertical escolhido
+fun converterParaEspacoVisual(x: Float, y: Float, z: Float, eixoVertical: Int): Vector3f {
+    return when (eixoVertical) {
+        0 -> Vector3f(y, x, z) // X é vertical
+        1 -> Vector3f(x, y, z) // Y é vertical (padrão)
+        else -> Vector3f(x, z, y) // Z é vertical
+    }
 }
 
 fun formatarNumero(valor: Float, simplificar: Boolean): String {
@@ -71,10 +69,10 @@ fun main() {
     val mostrarCaixas = ImBoolean(false)
     val mostrarRotulos = ImBoolean(true)
     val simplificarZeros = ImBoolean(true)
-    val fundoClaro = ImBoolean(false)
 
-    val eixoVertical = ImInt(1)
-    val eixoHorizontal = ImInt(0)
+    // 0 = X, 1 = Y, 2 = Z
+    val eixoVertical = ImInt(1)   // Padrão: Y para cima
+    val eixoHorizontal = ImInt(0) // Padrão: X na base
     val opcoesEixos = arrayOf("X", "Y", "Z")
 
     val travadoVertical = ImBoolean(false)
@@ -150,27 +148,24 @@ fun main() {
         ImGui.separator()
         ImGui.text("Configuração de Eixos:")
 
+        // 1. EIXO VERTICAL
         ImGui.beginDisabled(travadoVertical.get())
         if (ImGui.combo("vertical", eixoVertical, opcoesEixos)) {
             val restantes = (setOf(0, 1, 2) - setOf(eixoVertical.get())).toList()
-            if (!travadoHorizontal.get() && !restantes.contains(eixoHorizontal.get())) {
-                eixoHorizontal.set(restantes[0])
-            }
+            if (!travadoHorizontal.get()) eixoHorizontal.set(restantes[0])
         }
         ImGui.endDisabled()
         ImGui.sameLine()
         ImGui.checkbox("[Travar]##V", travadoVertical)
 
+        // Opções disponíveis para horizontal (exclui o eixo vertical)
         val disponiveisH = (setOf(0, 1, 2) - setOf(eixoVertical.get())).toList()
         val opcoesH = arrayOf(opcoesEixos[disponiveisH[0]], opcoesEixos[disponiveisH[1]])
 
         fun indexParaGlobal(idxLocal: Int) = disponiveisH[idxLocal]
         fun globalParaIndex(g: Int) = if (disponiveisH.contains(g)) disponiveisH.indexOf(g) else 0
 
-        if (!disponiveisH.contains(eixoHorizontal.get())) {
-            eixoHorizontal.set(disponiveisH[0])
-        }
-
+        // 2. EIXO HORIZONTAL
         val hLocal = ImInt(globalParaIndex(eixoHorizontal.get()))
         ImGui.beginDisabled(travadoHorizontal.get())
         if (ImGui.combo("horizontal", hLocal, opcoesH)) {
@@ -184,7 +179,6 @@ fun main() {
         ImGui.checkbox("Mostrar Caixas Dimensionais", mostrarCaixas)
         ImGui.checkbox("Mostrar Coordenadas nos Pontos", mostrarRotulos)
         ImGui.checkbox("Simplificar Zeros Decimais", simplificarZeros)
-        ImGui.checkbox("Fundo Claro", fundoClaro)
 
         ImGui.separator()
         ImGui.text("Vetor Resultante (A -> B):")
@@ -213,20 +207,15 @@ fun main() {
             eixoHorizontal.set(0)
             travadoVertical.set(false)
             travadoHorizontal.set(false)
-            fundoClaro.set(false)
         }
 
         ImGui.end()
 
-        val pos3DA = converterParaEspacoVisual(pontoA.x, pontoA.y, pontoA.z, eixoVertical.get(), eixoHorizontal.get())
-        val pos3DB = converterParaEspacoVisual(pontoB.x, pontoB.y, pontoB.z, eixoVertical.get(), eixoHorizontal.get())
+        // Converter posições para o espaço visual correto com base na vertical escolhida
+        val pos3DA = converterParaEspacoVisual(pontoA.x, pontoA.y, pontoA.z, eixoVertical.get())
+        val pos3DB = converterParaEspacoVisual(pontoB.x, pontoB.y, pontoB.z, eixoVertical.get())
 
-        if (fundoClaro.get()) {
-            glClearColor(0.92f, 0.94f, 0.96f, 1f)
-        } else {
-            glClearColor(0.07f, 0.08f, 0.10f, 1f)
-        }
-
+        glClearColor(0.07f, 0.08f, 0.10f, 1f)
         glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
         val projection = Matrix4f().perspective(Math.toRadians(45.0).toFloat(), 1280f / 720f, 0.1f, 100f)
@@ -250,32 +239,26 @@ fun main() {
             6f
         ).toInt()
 
-        desenharGrelhaXZ(maxCoord, fundoClaro.get())
+        desenharGrelhaXZ(maxCoord)
         desenharEixosDinamicos(maxCoord.toFloat(), pos3DA, pos3DB, eixoVertical.get(), eixoHorizontal.get(), opcoesEixos)
 
         if (mostrarCaixas.get()) {
-            desenharCaixaDimensional(pos3DA, 0.05f, 0.5f, 0.8f)
-            desenharCaixaDimensional(pos3DB, 0.8f, 0.7f, 0.0f)
+            desenharCaixaDimensional(pos3DA, 0.13f, 0.82f, 0.93f)
+            desenharCaixaDimensional(pos3DB, 0.98f, 0.92f, 0.11f)
         }
 
-        desenharEsferaPonto(pos3DA, 0.15f, 0.05f, 0.6f, 0.85f)
-        desenharEsferaPonto(pos3DB, 0.15f, 0.9f, 0.8f, 0.1f)
+        desenharEsferaPonto(pos3DB, 0.15f, 0.98f, 0.92f, 0.11f)
+        desenharEsferaPonto(pos3DA, 0.15f, 0.13f, 0.82f, 0.93f)
 
-        // Define a cor da seta dinamicamente: Escuro/Preto no fundo claro, Vermelho vibrante no fundo escuro
-        if (fundoClaro.get()) {
-            desenharSetaVetor(pos3DA, pos3DB, 0.1f, 0.1f, 0.1f)
-        } else {
-            desenharSetaVetor(pos3DA, pos3DB, 0.9f, 0.2f, 0.2f)
-        }
+        desenharSetaVetor(pos3DA, pos3DB, 0.9f, 0.2f, 0.2f)
 
-        desenharCaixaProjecao(pos3DB, 0.2f, 0.7f, 0.2f)
-        desenharCaixaProjecao(pos3DA, 0.2f, 0.7f, 0.2f)
+        desenharCaixaProjecao(pos3DB, 0.2f, 0.9f, 0.2f)
+        desenharCaixaProjecao(pos3DA, 0.2f, 0.9f, 0.2f)
 
         if (mostrarRotulos.get()) {
             val vp = Matrix4f().mul(projection).mul(view)
-            val corTexto = if (fundoClaro.get()) 0xFF111111.toInt() else 0xFFFFFFFF.toInt()
-            renderizarRotuloPonto(pontoA, pos3DA, vp, 1280f, 720f, simplificarZeros.get(), corTexto)
-            renderizarRotuloPonto(pontoB, pos3DB, vp, 1280f, 720f, simplificarZeros.get(), corTexto)
+            renderizarRotuloPonto(pontoA, pos3DA, vp, 1280f, 720f, simplificarZeros.get())
+            renderizarRotuloPonto(pontoB, pos3DB, vp, 1280f, 720f, simplificarZeros.get())
         }
 
         ImGui.render()
@@ -312,25 +295,26 @@ fun desenharEixosDinamicos(limite: Float, posA: Vector3f, posB: Vector3f, vAxis:
         if (temNeg[i]) max(kotlin.math.abs(minVal) + 1f, 6.0f) else 1.0f
     }
 
-    glLineWidth(2.0f)
+    glLineWidth(2.5f)
     glBegin(GL_LINES)
 
+    // O outro eixo horizontal que sobra automaticamente
     val outroH = (setOf(0, 1, 2) - setOf(vAxis, hAxis)).first()
 
     for (i in 0..2) {
         val eixoLogico = when(i) {
-            0 -> hAxis
-            1 -> vAxis
-            else -> outroH
+            0 -> hAxis  // Direção X da tela
+            1 -> vAxis  // Direção Y (vertical) da tela
+            else -> outroH // Direção Z da tela
         }
 
         when (eixoLogico) {
-            vAxis -> glColor3f(0.1f, 0.7f, 0.1f)
-            hAxis -> glColor3f(0.8f, 0.2f, 0.2f)
-            else -> glColor3f(0.1f, 0.4f, 0.8f)
+            vAxis -> glColor3f(0.2f, 0.9f, 0.2f)  // Vertical (Verde)
+            hAxis -> glColor3f(0.8f, 0.2f, 0.2f)  // Horizontal 1 (Vermelho)
+            else -> glColor3f(0.2f, 0.5f, 0.9f)   // Horizontal 2 (Azul)
         }
 
-        val negVal = if (temNeg[i]) -tamNeg[i] else 0f
+        val negVal = if (temNeg[eixoLogico]) -tamNeg[eixoLogico] else 0f
         when (i) {
             0 -> { glVertex3f(negVal, 0f, 0f); glVertex3f(tamanhoEixoPos, 0f, 0f) }
             1 -> { glVertex3f(0f, negVal, 0f); glVertex3f(0f, tamanhoEixoPos, 0f) }
@@ -340,38 +324,44 @@ fun desenharEixosDinamicos(limite: Float, posA: Vector3f, posB: Vector3f, vAxis:
     glEnd()
 
     desenharCaractere3D(opcoes[hAxis][0], tamanhoEixoPos + 0.4f, 0.0f, 0.0f, 0.8f, 0.2f, 0.2f, 90f, 0f, 0f)
-    desenharCaractere3D(opcoes[vAxis][0], 0.0f, tamanhoEixoPos + 0.4f, 0.0f, 0.1f, 0.7f, 0.1f, 0f, 0f, 0f)
-    desenharCaractere3D(opcoes[outroH][0], 0.0f, 0.0f, tamanhoEixoPos + 0.4f, 0.1f, 0.4f, 0.8f, 90f, 0f, 90f)
+    desenharCaractere3D(opcoes[vAxis][0], 0.0f, tamanhoEixoPos + 0.4f, 0.0f, 0.2f, 0.9f, 0.2f, 0f, 0f, 0f)
+    desenharCaractere3D(opcoes[outroH][0], 0.0f, 0.0f, tamanhoEixoPos + 0.4f, 0.2f, 0.5f, 0.9f, 90f, 0f, 90f)
 
     val maxInt = tamanhoEixoPos.toInt()
-    glLineWidth(1.2f)
+    glLineWidth(1.5f)
 
     for (i in 1..maxInt) {
         val v = i.toFloat()
         glColor3f(0.8f, 0.2f, 0.2f); glBegin(GL_LINES); glVertex3f(v, 0f, -0.1f); glVertex3f(v, 0f, 0.1f); glEnd()
         desenharNumero3D(i, v, 0.01f, 0.35f, 90f, 0f, 0f, 0.8f, 0.2f, 0.2f)
 
-        glColor3f(0.1f, 0.7f, 0.1f); glBegin(GL_LINES); glVertex3f(-0.1f, v, 0f); glVertex3f(0.1f, v, 0f); glEnd()
-        desenharNumero3D(i, 0.35f, v - 0.08f, 0f, 0f, 0f, 0f, 0.1f, 0.7f, 0.1f)
+        glColor3f(0.2f, 0.9f, 0.2f); glBegin(GL_LINES); glVertex3f(-0.1f, v, 0f); glVertex3f(0.1f, v, 0f); glEnd()
+        desenharNumero3D(i, 0.35f, v - 0.08f, 0f, 0f, 0f, 0f, 0.2f, 0.9f, 0.2f)
 
-        glColor3f(0.1f, 0.4f, 0.8f); glBegin(GL_LINES); glVertex3f(-0.1f, 0f, v); glVertex3f(0.1f, 0f, v); glEnd()
-        desenharNumero3D(i, 0.35f, 0.01f, v, 90f, 0f, 90f, 0.1f, 0.4f, 0.8f)
+        glColor3f(0.2f, 0.5f, 0.9f); glBegin(GL_LINES); glVertex3f(-0.1f, 0f, v); glVertex3f(0.1f, 0f, v); glEnd()
+        desenharNumero3D(i, 0.35f, 0.01f, v, 90f, 0f, 90f, 0.2f, 0.5f, 0.9f)
     }
 
-    for (i in 1..tamNeg[0].toInt()) {
-        val v = -i.toFloat()
-        glColor3f(0.8f, 0.2f, 0.2f); glBegin(GL_LINES); glVertex3f(v, 0f, -0.1f); glVertex3f(v, 0f, 0.1f); glEnd()
-        desenharNumero3D(-i, v, 0.01f, 0.35f, 90f, 0f, 0f, 0.8f, 0.2f, 0.2f)
+    if (temNeg[hAxis]) {
+        for (i in 1..tamNeg[hAxis].toInt()) {
+            val v = -i.toFloat()
+            glColor3f(0.8f, 0.2f, 0.2f); glBegin(GL_LINES); glVertex3f(v, 0f, -0.1f); glVertex3f(v, 0f, 0.1f); glEnd()
+            desenharNumero3D(-i, v, 0.01f, 0.35f, 90f, 0f, 0f, 0.8f, 0.2f, 0.2f)
+        }
     }
-    for (i in 1..tamNeg[1].toInt()) {
-        val v = -i.toFloat()
-        glColor3f(0.1f, 0.7f, 0.1f); glBegin(GL_LINES); glVertex3f(-0.1f, v, 0f); glVertex3f(0.1f, v, 0f); glEnd()
-        desenharNumero3D(-i, 0.35f, v - 0.08f, 0f, 0f, 0f, 0f, 0.1f, 0.7f, 0.1f)
+    if (temNeg[vAxis]) {
+        for (i in 1..tamNeg[vAxis].toInt()) {
+            val v = -i.toFloat()
+            glColor3f(0.2f, 0.9f, 0.2f); glBegin(GL_LINES); glVertex3f(-0.1f, v, 0f); glVertex3f(0.1f, v, 0f); glEnd()
+            desenharNumero3D(-i, 0.35f, v - 0.08f, 0f, 0f, 0f, 0f, 0.2f, 0.9f, 0.2f)
+        }
     }
-    for (i in 1..tamNeg[2].toInt()) {
-        val v = -i.toFloat()
-        glColor3f(0.1f, 0.4f, 0.8f); glBegin(GL_LINES); glVertex3f(-0.1f, 0f, v); glVertex3f(0.1f, 0f, v); glEnd()
-        desenharNumero3D(-i, 0.35f, 0.01f, v, 90f, 0f, 90f, 0.1f, 0.4f, 0.8f)
+    if (temNeg[outroH]) {
+        for (i in 1..tamNeg[outroH].toInt()) {
+            val v = -i.toFloat()
+            glColor3f(0.2f, 0.5f, 0.9f); glBegin(GL_LINES); glVertex3f(-0.1f, 0f, v); glVertex3f(0.1f, 0f, v); glEnd()
+            desenharNumero3D(-i, 0.35f, 0.01f, v, 90f, 0f, 90f, 0.2f, 0.5f, 0.9f)
+        }
     }
 }
 
@@ -437,7 +427,7 @@ fun desenharNumero3D(
 
 fun desenharCaractere3D(char: Char, x: Float, y: Float, z: Float, r: Float, g: Float, b: Float, rotX: Float, rotY: Float, rotZ: Float) {
     glColor3f(r, g, b)
-    glLineWidth(2.0f)
+    glLineWidth(2.5f)
     glPushMatrix()
     glTranslatef(x, y, z)
     glRotatef(rotX, 1f, 0f, 0f)
@@ -485,12 +475,8 @@ fun desenharCaixaDimensional(pos: Vector3f, r: Float, g: Float, b: Float) {
     glDisable(GL_LINE_STIPPLE)
 }
 
-fun desenharGrelhaXZ(limite: Int, claro: Boolean) {
-    if (claro) {
-        glColor4f(0.75f, 0.78f, 0.82f, 0.6f)
-    } else {
-        glColor4f(0.18f, 0.19f, 0.22f, 0.5f)
-    }
+fun desenharGrelhaXZ(limite: Int) {
+    glColor4f(0.18f, 0.19f, 0.22f, 0.5f)
     glLineWidth(1f)
     glBegin(GL_LINES)
     for (i in -limite..limite) {
@@ -534,21 +520,12 @@ fun desenharSetaVetor(inicio: Vector3f, fim: Vector3f, r: Float, g: Float, b: Fl
 
     direcao.normalize()
 
-    val raioEsfera = 0.15f
-    val fimAjustado = if (comprimento > raioEsfera) {
-        Vector3f(fim).sub(Vector3f(direcao).mul(raioEsfera))
-    } else {
-        Vector3f(fim)
-    }
-
-    val tamanhoPonta = 0.3f
-    val raioPonta = 0.10f
-    val pontoBasePonta = Vector3f(fimAjustado).sub(Vector3f(direcao).mul(tamanhoPonta))
-
-    glDisable(GL_DEPTH_TEST)
+    val tamanhoPonta = 0.4f
+    val raioPonta = 0.12f
+    val pontoBasePonta = Vector3f(fim).sub(Vector3f(direcao).mul(tamanhoPonta))
 
     glColor3f(r, g, b)
-    glLineWidth(5.0f)
+    glLineWidth(3f)
     glBegin(GL_LINES)
     glVertex3f(inicio.x, inicio.y, inicio.z)
     glVertex3f(pontoBasePonta.x, pontoBasePonta.y, pontoBasePonta.z)
@@ -564,7 +541,7 @@ fun desenharSetaVetor(inicio: Vector3f, fim: Vector3f, r: Float, g: Float, b: Fl
 
     val segmentos = 12
     glBegin(GL_TRIANGLE_FAN)
-    glVertex3f(fimAjustado.x, fimAjustado.y, fimAjustado.z)
+    glVertex3f(fim.x, fim.y, fim.z)
     for (i in 0..segmentos) {
         val angulo = (i.toDouble() / segmentos) * 2.0 * Math.PI
         val cosA = cos(angulo).toFloat() * raioPonta
@@ -576,8 +553,6 @@ fun desenharSetaVetor(inicio: Vector3f, fim: Vector3f, r: Float, g: Float, b: Fl
         glVertex3f(px, py, pz)
     }
     glEnd()
-
-    glEnable(GL_DEPTH_TEST)
 }
 
 fun desenharCaixaProjecao(pos: Vector3f, r: Float, g: Float, b: Float) {
@@ -588,7 +563,7 @@ fun desenharCaixaProjecao(pos: Vector3f, r: Float, g: Float, b: Float) {
     glEnd()
 }
 
-fun renderizarRotuloPonto(p: Ponto3D, pos3D: Vector3f, viewProjection: Matrix4f, larguraJanela: Float, alturaJanela: Float, simplificar: Boolean, corTexto: Int) {
+fun renderizarRotuloPonto(p: Ponto3D, pos3D: Vector3f, viewProjection: Matrix4f, larguraJanela: Float, alturaJanela: Float, simplificar: Boolean) {
     val clipCoords = Vector4f(pos3D.x, pos3D.y + 0.18f, pos3D.z, 1.0f).mul(viewProjection)
     if (clipCoords.w > 0.0f) {
         val invW = 1.0f / clipCoords.w
@@ -602,6 +577,6 @@ fun renderizarRotuloPonto(p: Ponto3D, pos3D: Vector3f, viewProjection: Matrix4f,
         val textoCoord = "${p.nome}: $coordsStr"
 
         val drawList = ImGui.getBackgroundDrawList()
-        drawList.addText(screenX - 35f, screenY - 10f, corTexto, textoCoord)
+        drawList.addText(screenX - 35f, screenY - 10f, 0xFFFFFFFF.toInt(), textoCoord)
     }
 }
